@@ -34,6 +34,28 @@
     .inline-group input[type="text"] {
       flex-grow: 1;
     }
+    #spinner {
+      display: none;
+      margin-top: 10px;
+    }
+
+    .spinner-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-right: 4px;
+      border-radius: 50%;
+      background-color: #444;
+      animation: blink 1s infinite alternate;
+    }
+
+    .spinner-dot:nth-child(2) { animation-delay: 0.2s; }
+    .spinner-dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes blink {
+      0% { opacity: 0.2; }
+      100% { opacity: 1; }
+    }
   </style>
 </head>
 <body>
@@ -53,10 +75,17 @@
     <button onclick="chooseOutput()">Browse...</button>
   </div>
 
-  <button onclick="speakText()">Speak</button>
+  <button id="speakButton" onclick="speakText()">Speak</button>
   <button onclick="resetToDefaults()" style="margin-left: 10px; background-color: #f44; color: white;">Reset to Defaults</button>
 
   <p id="status"></p>
+  
+  <div id="progressContainer" style="display: none; margin-top: 10px;">
+    <div style="width: 100%; background: #ccc; border-radius: 4px;">
+      <div id="progressBar" style="width: 0%; height: 12px; background: #4caf50; border-radius: 4px;"></div>
+    </div>
+    <p id="progressText" style="margin: 4px 0 0; font-size: 0.9em;">0%</p>
+  </div>
 
 <script>
   let outputFilePath = null;
@@ -105,13 +134,47 @@
     const text = document.getElementById('ttsText').value;
     const modelPath = document.getElementById('modelSelect').value;
     const status = document.getElementById('status');
+    const speakBtn = document.getElementById('speakButton');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+
+    speakBtn.disabled = true;
     status.textContent = 'Processing...';
+    progressContainer.style.display = 'block';
+    progressBar.style.width = '0%';
+    progressText.textContent = '0%';
+
+    // Estimate duration based on text length
+    const charsPerSecond = 15; // tweak this if needed
+    const estimatedDuration = (text.length / charsPerSecond) * 1000;
+    const startTime = Date.now();
+
+    // Progress animation loop
+    let progressTimer = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      let percent = Math.min(90, Math.floor((elapsed / estimatedDuration) * 100));
+
+      progressBar.style.width = percent + '%';
+      progressText.textContent = percent + '%';
+    }, 100);
 
     try {
       await window.piperAPI.speak(text, modelPath, outputFilePath);
+      progressBar.style.width = '100%';
+      progressText.textContent = '100%';
       status.textContent = 'Done!';
     } catch (err) {
       status.textContent = 'Error: ' + err;
+    } finally {
+      clearInterval(progressTimer);
+      speakBtn.disabled = false;
+
+      setTimeout(() => {
+        progressContainer.style.display = 'none';
+        progressBar.style.width = '0%';
+        progressText.textContent = '';
+      }, 1000);
     }
   }
 
