@@ -87,6 +87,11 @@ ipcMain.handle('get-last-settings', async () => {
   };
 });
 
+ipcMain.handle('reset-settings', async () => {
+  store.clear();
+  return true;
+});
+
 ipcMain.handle('get-voice-models', async () => {
   const voiceDir = path.join(__dirname, 'voices');
   try {

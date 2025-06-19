@@ -54,6 +54,7 @@
   </div>
 
   <button onclick="speakText()">Speak</button>
+  <button onclick="resetToDefaults()" style="margin-left: 10px; background-color: #f44; color: white;">Reset to Defaults</button>
 
   <p id="status"></p>
 
@@ -112,6 +113,14 @@
     } catch (err) {
       status.textContent = 'Error: ' + err;
     }
+  }
+
+  async function resetToDefaults() {
+    const confirmed = confirm('Are you sure you want to reset all settings to defaults?');
+    if (!confirmed) return;
+
+    await window.piperAPI.resetSettings();
+    location.reload(); // reloads the app with default state
   }
 
   // Call on load
