@@ -57,45 +57,66 @@
 
   <p id="status"></p>
 
-  <script>
-    let outputFilePath = null;
+<script>
+  let outputFilePath = null;
 
-    async function populateVoices() {
-      const voices = await window.piperAPI.getVoiceModels();
-      const select = document.getElementById('modelSelect');
-      if (!voices.length) {
-        select.innerHTML = `<option disabled selected>No models found</option>`;
-        return;
-      }
+  async function populateVoices() {
+    const voices = await window.piperAPI.getVoiceModels();
+    const select = document.getElementById('modelSelect');
+    const textArea = document.getElementById('ttsText');
 
-      select.innerHTML = voices.map(path =>
-        `<option value="${path}">${path.split('/').pop()}</option>`
-      ).join('');
+    if (!voices.length) {
+      select.innerHTML = `<option disabled selected>No valid models found</option>`;
+      return;
     }
 
-    async function chooseOutput() {
-      const selected = await window.piperAPI.chooseOutputFile();
-      if (selected) {
-        outputFilePath = selected;
-        document.getElementById('outputPath').value = outputFilePath;
-      }
+    // Populate model list
+    select.innerHTML = voices.map(path =>
+      `<option value="${path}">${path.split('/').pop()}</option>`
+    ).join('');
+
+    // Get saved settings
+    const settings = await window.piperAPI.getLastSettings();
+
+    if (settings.lastModel && voices.includes(settings.lastModel)) {
+      select.value = settings.lastModel;
     }
 
-    async function speakText() {
-      const text = document.getElementById('ttsText').value;
-      const modelPath = document.getElementById('modelSelect').value;
-      const status = document.getElementById('status');
-      status.textContent = 'Processing...';
-
-      try {
-        await window.piperAPI.speak(text, modelPath, outputFilePath);
-        status.textContent = 'Done!';
-      } catch (err) {
-        status.textContent = 'Error: ' + err;
-      }
+    if (settings.lastOutput) {
+      outputFilePath = settings.lastOutput;
+      document.getElementById('outputPath').value = outputFilePath;
     }
 
-    window.onload = populateVoices;
-  </script>
+    if (settings.lastText) {
+      textArea.value = settings.lastText;
+    }
+  }
+
+  async function chooseOutput() {
+    const selected = await window.piperAPI.chooseOutputFile();
+    if (selected) {
+      outputFilePath = selected;
+      document.getElementById('outputPath').value = outputFilePath;
+    }
+  }
+
+  async function speakText() {
+    const text = document.getElementById('ttsText').value;
+    const modelPath = document.getElementById('modelSelect').value;
+    const status = document.getElementById('status');
+    status.textContent = 'Processing...';
+
+    try {
+      await window.piperAPI.speak(text, modelPath, outputFilePath);
+      status.textContent = 'Done!';
+    } catch (err) {
+      status.textContent = 'Error: ' + err;
+    }
+  }
+
+  // Call on load
+  window.onload = populateVoices;
+</script>
+
 </body>
 </html>

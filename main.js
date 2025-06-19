@@ -1,17 +1,26 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
-const { exec } = require('child_process');
+const fs = require('fs');
+const { spawn } = require('child_process');
+
+const Store = require('electron-store').default;
+const store = new Store();
 
 function createWindow() {
+  const winBounds = store.get('windowBounds', { width: 500, height: 500 });
   const win = new BrowserWindow({
-    width: 500,
-    height: 400,
+    ...winBounds,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
 
   win.loadFile('index.html');
+
+  // Save size and position on close
+  win.on('close', () => {
+    store.set('windowBounds', win.getBounds());
+  });
 }
 
 app.whenReady().then(createWindow);
@@ -19,7 +28,6 @@ app.whenReady().then(createWindow);
 // 👇 Replace this with the actual path to your Piper binary
 const piperPath = '/Users/davealaw/piper/build/piper';
 
-const { spawn } = require('child_process');
 
 ipcMain.handle('choose-output-file', async () => {
   const result = await dialog.showSaveDialog({
@@ -32,13 +40,24 @@ ipcMain.handle('choose-output-file', async () => {
 });
 
 ipcMain.handle('run-piper', async (_, text, modelPath, outputPath) => {
-  const piperCmd = piperPath;
-  const outFile = outputPath || path.join(__dirname, 'out.wav');
-  const piperArgs = ['--model', modelPath, '--output_file', outFile];
+  const configPath = modelPath + '.json';
+  if (!fs.existsSync(modelPath) || !fs.existsSync(configPath)) {
+    throw new Error(`Model or config missing: ${modelPath}`);
+  }
 
-  console.log('[PIPER] Running:', piperCmd, piperArgs.join(' '));
+  const outFile = outputPath || path.join(__dirname, 'out.wav');
+
+  // Save settings persistently
+  store.set('lastModel', modelPath);
+  store.set('lastOutput', outFile);
+  store.set('lastText', text);
+
+  const args = ['--model', modelPath, '--output_file', outFile];
+
+  console.log('[PIPER] Running:', piperPath, args.join(' '));
+
   return new Promise((resolve, reject) => {
-    const piper = spawn(piperCmd, piperArgs);
+    const piper = spawn(piperPath, args);
     let stderr = '';
 
     piper.stdin.write(text);
@@ -50,25 +69,23 @@ ipcMain.handle('run-piper', async (_, text, modelPath, outputPath) => {
 
     piper.on('close', (code) => {
       if (code !== 0) {
-        console.error('[PIPER] Error:', stderr);
         reject(`Piper failed with code ${code}: ${stderr}`);
       } else {
-        console.log('[PIPER] Success, playing audio...');
         const afplay = spawn('afplay', [outFile]);
-        afplay.on('error', (err) => {
-          console.error('[AFPLAY] Error:', err.message);
-          reject(`Playback failed: ${err.message}`);
-        });
-        afplay.on('close', () => {
-          console.log('[AFPLAY] Done');
-          resolve('Success');
-        });
+        afplay.on('error', err => reject(`Playback failed: ${err.message}`));
+        afplay.on('close', () => resolve('Success'));
       }
     });
   });
 });
 
-const fs = require('fs');
+ipcMain.handle('get-last-settings', async () => {
+  return {
+    lastModel: store.get('lastModel', null),
+    lastOutput: store.get('lastOutput', null),
+    lastText: store.get('lastText', '')
+  };
+});
 
 ipcMain.handle('get-voice-models', async () => {
   const voiceDir = path.join(__dirname, 'voices');
