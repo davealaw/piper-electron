@@ -1,7 +1,6 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { exec } = require('child_process');
-const { dialog } = require('electron');
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -22,9 +21,20 @@ const piperPath = '/Users/davealaw/piper/build/piper';
 
 const { spawn } = require('child_process');
 
-ipcMain.handle('run-piper', async (_, text, modelPath) => {
+ipcMain.handle('choose-output-file', async () => {
+  const result = await dialog.showSaveDialog({
+    title: 'Save Output Audio',
+    defaultPath: 'piper-output.wav',
+    filters: [{ name: 'WAV files', extensions: ['wav'] }]
+  });
+
+  return result.canceled ? null : result.filePath;
+});
+
+ipcMain.handle('run-piper', async (_, text, modelPath, outputPath) => {
   const piperCmd = piperPath;
-  const piperArgs = ['--model', modelPath, '--output_file', 'out.wav'];
+  const outFile = outputPath || path.join(__dirname, 'out.wav');
+  const piperArgs = ['--model', modelPath, '--output_file', outFile];
 
   console.log('[PIPER] Running:', piperCmd, piperArgs.join(' '));
   return new Promise((resolve, reject) => {
@@ -44,7 +54,7 @@ ipcMain.handle('run-piper', async (_, text, modelPath) => {
         reject(`Piper failed with code ${code}: ${stderr}`);
       } else {
         console.log('[PIPER] Success, playing audio...');
-        const afplay = spawn('afplay', ['out.wav']);
+        const afplay = spawn('afplay', [outFile]);
         afplay.on('error', (err) => {
           console.error('[AFPLAY] Error:', err.message);
           reject(`Playback failed: ${err.message}`);

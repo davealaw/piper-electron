@@ -26,6 +26,14 @@
       margin-top: 10px;
       color: #444;
     }
+    .inline-group {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .inline-group input[type="text"] {
+      flex-grow: 1;
+    }
   </style>
 </head>
 <body>
@@ -39,11 +47,19 @@
   <label for="ttsText">Text to Speak:</label>
   <textarea id="ttsText" rows="5" placeholder="Enter text here..."></textarea>
 
+  <label for="outputPath">Output File (optional):</label>
+  <div class="inline-group">
+    <input id="outputPath" type="text" readonly placeholder="out.wav (default)" />
+    <button onclick="chooseOutput()">Browse...</button>
+  </div>
+
   <button onclick="speakText()">Speak</button>
 
   <p id="status"></p>
 
   <script>
+    let outputFilePath = null;
+
     async function populateVoices() {
       const voices = await window.piperAPI.getVoiceModels();
       const select = document.getElementById('modelSelect');
@@ -57,6 +73,14 @@
       ).join('');
     }
 
+    async function chooseOutput() {
+      const selected = await window.piperAPI.chooseOutputFile();
+      if (selected) {
+        outputFilePath = selected;
+        document.getElementById('outputPath').value = outputFilePath;
+      }
+    }
+
     async function speakText() {
       const text = document.getElementById('ttsText').value;
       const modelPath = document.getElementById('modelSelect').value;
@@ -64,7 +88,7 @@
       status.textContent = 'Processing...';
 
       try {
-        await window.piperAPI.speak(text, modelPath);
+        await window.piperAPI.speak(text, modelPath, outputFilePath);
         status.textContent = 'Done!';
       } catch (err) {
         status.textContent = 'Error: ' + err;
