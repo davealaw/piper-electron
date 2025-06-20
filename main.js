@@ -4,7 +4,17 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 
 const Store = require('electron-store').default;
-const store = new Store();
+const store = new Store({
+  defaults: {
+    lastModel: '',
+    lastText: '',
+    windowBounds: { width: 800, height: 600, x: undefined, y: undefined },
+    piperPath: ''
+  }
+});
+
+let currentProcess = null;
+let currentAudioFile = null;
 
 function createWindow() {
   const winBounds = store.get('windowBounds', { width: 500, height: 500 });
@@ -25,9 +35,39 @@ function createWindow() {
 
 app.whenReady().then(createWindow);
 
-// 👇 Replace this with the actual path to your Piper binary
-const piperPath = '/Users/davealaw/piper/build/piper';
+ipcMain.handle('choose-piper-path', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Select Piper Executable',
+    properties: ['openFile'],
+    filters: process.platform === 'win32' ? [{ name: 'Executable', extensions: ['exe'] }] : []
+  });
 
+  if (!result.canceled && result.filePaths.length > 0) {
+    const selectedPath = result.filePaths[0];
+    store.set('piperPath', selectedPath);
+    return selectedPath;
+  }
+
+  return null;
+});
+
+ipcMain.handle('get-piper-path', () => {
+  return store.get('piperPath');
+});
+
+ipcMain.handle('validate-piper-path', () => {
+  const piperPath = store.get('piperPath');
+  try {
+    return !!(
+      piperPath &&
+      fs.existsSync(piperPath) &&
+      fs.lstatSync(piperPath).isFile() &&
+      fs.accessSync(piperPath, fs.constants.X_OK) === undefined
+    );
+  } catch {
+    return false;
+  }
+});
 
 ipcMain.handle('choose-output-file', async () => {
   const result = await dialog.showSaveDialog({
@@ -36,47 +76,58 @@ ipcMain.handle('choose-output-file', async () => {
     filters: [{ name: 'WAV files', extensions: ['wav'] }]
   });
 
-  return result.canceled ? null : result.filePath;
+  if (!result.canceled && result.filePath) {
+    store.set('lastOutput', result.filePath);
+    return result.filePath;
+  }
 });
 
-ipcMain.handle('run-piper', async (_, text, modelPath, outputPath) => {
-  const configPath = modelPath + '.json';
-  if (!fs.existsSync(modelPath) || !fs.existsSync(configPath)) {
-    throw new Error(`Model or config missing: ${modelPath}`);
+ipcMain.handle('run-piper', async (_event, text, modelPath, outFile) => {
+  const piperPath = store.get('piperPath');
+  if (!piperPath || !fs.existsSync(piperPath) || !fs.lstatSync(piperPath).isFile()) {
+    throw new Error('Piper path not configured or invalid');
   }
 
-  const outFile = outputPath || path.join(__dirname, 'out.wav');
-
-  // Save settings persistently
+  // ✅ Save current state to store
+  store.set('lastText', text);
   store.set('lastModel', modelPath);
   store.set('lastOutput', outFile);
-  store.set('lastText', text);
-
-  const args = ['--model', modelPath, '--output_file', outFile];
-
-  console.log('[PIPER] Running:', piperPath, args.join(' '));
 
   return new Promise((resolve, reject) => {
-    const piper = spawn(piperPath, args);
-    let stderr = '';
+    const proc = spawn(piperPath, [
+      '--model', modelPath,
+      '--output_file', outFile
+    ], { stdio: ['pipe', 'inherit', 'inherit'] });
 
-    piper.stdin.write(text);
-    piper.stdin.end();
+    currentProcess = proc;
+    currentAudioFile = outFile;
 
-    piper.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
+    proc.stdin.write(text);
+    proc.stdin.end();
 
-    piper.on('close', (code) => {
-      if (code !== 0) {
-        reject(`Piper failed with code ${code}: ${stderr}`);
+    proc.on('close', (code) => {
+      currentProcess = null;
+      if (code === 0) {
+        currentAudioFile = outFile;
+        resolve();
       } else {
-        const afplay = spawn('afplay', [outFile]);
-        afplay.on('error', err => reject(`Playback failed: ${err.message}`));
-        afplay.on('close', () => resolve('Success'));
+        reject(new Error('Piper failed with code ' + code));
       }
     });
   });
+});
+
+ipcMain.handle('cancel-speak', async () => {
+  if (currentProcess) {
+    try {
+      currentProcess.kill();
+      currentProcess = null;
+      return true;
+    } catch (err) {
+      console.error('Failed to cancel process:', err);
+    }
+  }
+  return false;
 });
 
 ipcMain.handle('get-last-settings', async () => {

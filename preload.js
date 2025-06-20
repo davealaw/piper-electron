@@ -5,5 +5,10 @@ contextBridge.exposeInMainWorld('piperAPI', {
   getVoiceModels: () => ipcRenderer.invoke('get-voice-models'),
   chooseOutputFile: () => ipcRenderer.invoke('choose-output-file'),
   getLastSettings: () => ipcRenderer.invoke('get-last-settings'),
-  resetSettings: () => ipcRenderer.invoke('reset-settings')
+  resetSettings: () => ipcRenderer.invoke('reset-settings'),
+  choosePiperPath: () => ipcRenderer.invoke('choose-piper-path'),
+  getPiperPath: () => ipcRenderer.invoke('get-piper-path'),
+  validatePiperPath: () => ipcRenderer.invoke('validate-piper-path'),
+  cancelSpeak: () => ipcRenderer.invoke('cancel-speak')
 });
+
