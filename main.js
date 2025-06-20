@@ -13,6 +13,21 @@ const store = new Store({
   }
 });
 
+const defaultPiperPath = path.join(__dirname, 'piper');
+const defaultModelDir = path.join(__dirname, 'voices');
+
+if (!store.get('piperPath') || !fs.existsSync(store.get('piperPath'))) {
+  if (fs.existsSync(defaultPiperPath)) {
+    store.set('piperPath', defaultPiperPath);
+  }
+}
+
+if (!store.get('modelDirectory') || !fs.existsSync(store.get('modelDirectory'))) {
+  if (fs.existsSync(defaultModelDir)) {
+    store.set('modelDirectory', defaultModelDir);
+  }
+}
+
 let currentProcess = null;
 let currentAudioFile = null;
 
@@ -140,25 +155,53 @@ ipcMain.handle('get-last-settings', async () => {
 
 ipcMain.handle('reset-settings', async () => {
   store.clear();
-  return true;
+
+  // Set default piper path if it exists
+  if (fs.existsSync(defaultPiperPath)) {
+    store.set('piperPath', defaultPiperPath);
+  }
+
+  // Set default model directory if it exists
+  if (fs.existsSync(defaultModelDir)) {
+    store.set('modelDirectory', defaultModelDir);
+  }
+
+  return {
+    piperPath: store.get('piperPath'),
+    modelDirectory: store.get('modelDirectory'),
+  };
 });
 
 ipcMain.handle('get-voice-models', async () => {
-  const voiceDir = path.join(__dirname, 'voices');
-  try {
-    const files = fs.readdirSync(voiceDir);
-    const models = files.filter(f => f.endsWith('.onnx'));
+  const modelDir = store.get('modelDirectory');
+  if (!modelDir || !fs.existsSync(modelDir)) return [];
 
-    // Only return models with matching .config.json
-    const validModels = models.filter(model => {
-      const config = path.join(voiceDir, model + '.json');
-      return fs.existsSync(config);
-    });
+  const models = fs.readdirSync(modelDir)
+    .filter(name => name.endsWith('.onnx'))
+    .map(name => {
+      const fullPath = path.join(modelDir, name);
+      const jsonPath = fullPath + '.json'; // instead of replacing extension
+      return fs.existsSync(jsonPath) ? fullPath : null;
+    })
+    .filter(Boolean);
 
-    return validModels.map(f => path.join(voiceDir, f));
-  } catch (e) {
-    console.error('[VOICES] Error reading models:', e);
-    return [];
-  }
+  return models;
+});
+
+ipcMain.handle('choose-model-directory', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Select Model Directory',
+    properties: ['openDirectory']
+  });
+
+  if (result.canceled || result.filePaths.length === 0) return null;
+
+  const folder = result.filePaths[0];
+  store.set('modelDirectory', folder);
+  return folder;
+});
+
+ipcMain.handle('get-model-directory', () => {
+  return store.get('modelDirectory');
 });
 

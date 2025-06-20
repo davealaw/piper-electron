@@ -52,10 +52,10 @@
     .spinner-dot:nth-child(2) { animation-delay: 0.2s; }
     .spinner-dot:nth-child(3) { animation-delay: 0.4s; }
 
-	#progressContainer.fade-out {
-  	  opacity: 0.3;
-  	  transition: opacity 0.5s ease;
-	}
+    #progressContainer.fade-out {
+        opacity: 0.3;
+        transition: opacity 0.5s ease;
+    }
 
     @keyframes blink {
       0% { opacity: 0.2; }
@@ -70,9 +70,14 @@
 
   <div style="margin-top: 10px;">
     <button onclick="choosePiper()">Choose Piper Executable</button>
-    <span id="piperPathDisplay" style="font-size: 0.8em; color: #555;"></span>
+    <span id="piperPathDisplay"></span>
    </div>
 
+   <div>
+    <button onclick="selectModelDirectory()">Choose Model Folder</button>
+    <span id="modelDirDisplay"></span>
+  </div>
+  
   <label for="modelSelect">Choose Voice Model:</label>
   <select id="modelSelect">
     <option disabled selected>Loading models...</option>
@@ -109,6 +114,83 @@
 <script>
   let outputFilePath = null;
 
+  async function selectModelDirectory() {
+    const folder = await window.piperAPI.chooseModelDirectory();
+    if (folder) {
+      document.getElementById('modelDirectory').textContent = folder;
+      await populateVoices(); // re-load voice list
+    }
+  }
+
+  async function loadSettings() {
+    const settings = await window.piperAPI.getLastSettings();
+
+    if (settings.lastText) {
+      document.getElementById('ttsText').value = settings.lastText;
+    }
+
+    if (settings.lastOutput) {
+      document.getElementById('outputPath').value = settings.lastOutput;
+    }
+
+    document.getElementById('status').textContent = '';
+  }
+
+  async function populateVoices() {
+    const voices = await window.piperAPI.getVoiceModels();
+    const select = document.getElementById('modelSelect');
+    select.innerHTML = '';
+
+    if (!voices.length) {
+      const opt = document.createElement('option');
+      opt.text = 'No models found';
+      opt.disabled = true;
+      select.appendChild(opt);
+      return;
+    }
+
+    voices.forEach(model => {
+      const opt = document.createElement('option');
+      opt.value = model;
+      opt.text = model.split('/').pop(); // or format however you like
+      select.appendChild(opt);
+    });
+
+    // Select previously saved model if still valid
+    const last = await window.piperAPI.getLastSettings();
+    if (last?.lastModel && voices.includes(last.lastModel)) {
+      select.value = last.lastModel;
+    }
+  }
+
+  /*
+  async function populateVoices() {
+    const voices = await window.piperAPI.getVoiceModels();
+    const select = document.getElementById('modelSelect');
+    const settings = await window.piperAPI.getLastSettings();
+
+    select.innerHTML = '';
+
+    if (!voices.length) {
+      const opt = document.createElement('option');
+      opt.text = 'No models found';
+      opt.disabled = true;
+      select.appendChild(opt);
+      return;
+    }
+
+    voices.forEach(model => {
+      const opt = document.createElement('option');
+      opt.value = model;
+      opt.text = model.split('/').pop();
+      if (model === settings.lastModel) {
+        option.selected = true;
+      }      
+      select.appendChild(opt);
+    });
+  }
+  */
+/*
   async function populateVoices() {
     const models = await window.piperAPI.getVoiceModels();
     const settings = await window.piperAPI.getLastSettings();
@@ -125,18 +207,8 @@
       }
       select.appendChild(option);
     });
-
-    if (settings.lastText) {
-      document.getElementById('ttsText').value = settings.lastText;
-    }
-
-    if (settings.lastOutput) {
-      document.getElementById('outputPath').value = settings.lastOutput;
-    }
-
-    document.getElementById('status').textContent = '';
   }
-
+*/
   async function chooseOutput() {
     const selected = await window.piperAPI.chooseOutputFile();
     if (selected) {
@@ -271,9 +343,43 @@
     progressText.textContent = `${percent.toFixed(0)}%`;
   };
 
+  window.addEventListener('DOMContentLoaded', async () => {
+    // Load saved model directory (if any)
+    const modelDir = await window.piperAPI.getModelDirectory();
+    if (modelDir) {
+      document.getElementById('modelDirDisplay').textContent = modelDir;
+      await populateVoices();  // <== this is essential
+    } else {
+      document.getElementById('modelDirDisplay').textContent = 'No directory selected';
+    }
+
+    // Load last settings like text/model/output
+    const last = await window.piperAPI.getLastSettings();
+    if (last?.lastText) {
+      document.getElementById('textInput').value = last.lastText;
+    }
+
+    if (last?.lastModel) {
+      const voiceSelect = document.getElementById('modelSelect');
+      const option = Array.from(voiceSelect.options).find(opt => opt.value === last.lastModel);
+      if (option) {
+        voiceSelect.value = last.lastModel;
+      }
+    }
+  });
+
   // Call on load
   window.onload = async () => {
+
+    await loadSettings();
+
+    /*
+    const dir = await window.piperAPI.getModelDirectory();
+    if (dir) {
+      document.getElementById('modelDirDisplay').textContent = dir;
+    }    
     await populateVoices();
+    */
 
     const path = await window.piperAPI.getPiperPath();
     if (path) {
