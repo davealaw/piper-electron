@@ -10,7 +10,9 @@ contextBridge.exposeInMainWorld('piperAPI', {
   getPiperPath: () => ipcRenderer.invoke('get-piper-path'),
   validatePiperPath: () => ipcRenderer.invoke('validate-piper-path'),
   chooseModelDirectory: () => ipcRenderer.invoke('choose-model-directory'),
-  getModelDirectory: () => ipcRenderer.invoke('get-model-directory'),  
+  getModelDirectory: () => ipcRenderer.invoke('get-model-directory'),
+  previewVoice: (modelPath) => ipcRenderer.invoke('preview-voice', modelPath),
+  validateModelPath: (modelPath) => ipcRenderer.invoke('validate-model-path', modelPath),  
   cancelSpeak: () => ipcRenderer.invoke('cancel-speak')
 });
 

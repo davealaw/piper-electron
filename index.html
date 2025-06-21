@@ -68,6 +68,7 @@
 
   <audio id="audioPlayer" src="" preload="auto"></audio>
 
+  <label>Settings:</label>
   <div style="margin-top: 10px;">
     <button onclick="choosePiper()">Choose Piper Executable</button>
     <span id="piperPathDisplay"></span>
@@ -78,10 +79,13 @@
     <span id="modelDirDisplay"></span>
   </div>
   
+  <p></p>
   <label for="modelSelect">Choose Voice Model:</label>
   <select id="modelSelect">
     <option disabled selected>Loading models...</option>
   </select>
+  <button id="previewBtn" disabled>Preview Voice</button>
+  <p></p>
 
   <label for="ttsText">Text to Speak:</label>
   <textarea id="ttsText" rows="20" placeholder="Enter text here..."></textarea>
@@ -163,52 +167,6 @@
     }
   }
 
-  /*
-  async function populateVoices() {
-    const voices = await window.piperAPI.getVoiceModels();
-    const select = document.getElementById('modelSelect');
-    const settings = await window.piperAPI.getLastSettings();
-
-    select.innerHTML = '';
-
-    if (!voices.length) {
-      const opt = document.createElement('option');
-      opt.text = 'No models found';
-      opt.disabled = true;
-      select.appendChild(opt);
-      return;
-    }
-
-    voices.forEach(model => {
-      const opt = document.createElement('option');
-      opt.value = model;
-      opt.text = model.split('/').pop();
-      if (model === settings.lastModel) {
-        option.selected = true;
-      }      
-      select.appendChild(opt);
-    });
-  }
-  */
-/*
-  async function populateVoices() {
-    const models = await window.piperAPI.getVoiceModels();
-    const settings = await window.piperAPI.getLastSettings();
-
-    const select = document.getElementById('modelSelect');
-    select.innerHTML = '';
-
-    models.forEach(model => {
-      const option = document.createElement('option');
-      option.value = model;
-      option.textContent = model;
-      if (model === settings.lastModel) {
-        option.selected = true;
-      }
-      select.appendChild(option);
-    });
-  }
-*/
   async function chooseOutput() {
     const selected = await window.piperAPI.chooseOutputFile();
     if (selected) {
@@ -228,6 +186,10 @@
   async function updateSpeakButtonState() {
     const isValid = await window.piperAPI.validatePiperPath();
     document.getElementById('speakButton').disabled = !isValid;
+
+    const modelPath = document.getElementById('modelSelect').value;
+    const isModelValid = modelPath && await window.piperAPI.validateModelPath(modelPath);
+    document.getElementById('previewBtn').disabled = !isModelValid;
   }
 
   async function speakText() {
@@ -343,6 +305,25 @@
     progressText.textContent = `${percent.toFixed(0)}%`;
   };
 
+  window.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('previewBtn').addEventListener('click', async () => {
+      const modelPath = document.getElementById('modelSelect').value;
+      if (!modelPath) return;
+
+      try {
+        const audioPath = await window.piperAPI.previewVoice(modelPath);
+        
+        // Bust the cache by appending a timestamp
+        const audio = new Audio(`${audioPath}?t=${Date.now()}`);
+        audio.play();
+      } catch (err) {
+        console.error("Voice preview failed:", err);
+        alert("Voice preview failed. Check the console for details.");
+      }
+    });
+
+  });
+
   window.addEventListener('DOMContentLoaded', async () => {
     // Load saved model directory (if any)
     const modelDir = await window.piperAPI.getModelDirectory();
@@ -372,14 +353,6 @@
   window.onload = async () => {
 
     await loadSettings();
-
-    /*
-    const dir = await window.piperAPI.getModelDirectory();
-    if (dir) {
-      document.getElementById('modelDirDisplay').textContent = dir;
-    }    
-    await populateVoices();
-    */
 
     const path = await window.piperAPI.getPiperPath();
     if (path) {

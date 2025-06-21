@@ -132,6 +132,34 @@ ipcMain.handle('run-piper', async (_event, text, modelPath, outFile) => {
   });
 });
 
+ipcMain.handle('preview-voice', async (_event, modelPath) => {
+  const previewText = "This is a sample of the selected voice.";
+  const outputFile = path.join(app.getPath('temp'), 'piper-voice-preview.wav');
+
+  return new Promise((resolve, reject) => {
+    const piperPath = store.get('piperPath');
+    if (!piperPath || !fs.existsSync(piperPath)) {
+      return reject(new Error("Piper path is not configured correctly."));
+    }
+
+    const piper = spawn(piperPath, [
+      '--model', modelPath,
+      '--output_file', outputFile
+    ], { stdio: ['pipe', 'inherit', 'inherit'] });
+
+    piper.stdin.write(previewText);
+    piper.stdin.end();
+
+    piper.on('exit', code => {
+      if (code === 0) {
+        resolve(outputFile);
+      } else {
+        reject(new Error(`Preview failed with code ${code}`));
+      }
+    });
+  });
+});
+
 ipcMain.handle('cancel-speak', async () => {
   if (currentProcess) {
     try {
@@ -205,3 +233,6 @@ ipcMain.handle('get-model-directory', () => {
   return store.get('modelDirectory');
 });
 
+ipcMain.handle('validate-model-path', (_event, modelPath) => {
+  return fs.existsSync(modelPath);
+});
