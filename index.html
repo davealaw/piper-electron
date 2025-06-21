@@ -61,6 +61,28 @@
       0% { opacity: 0.2; }
       100% { opacity: 1; }
     }
+
+    .row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .fixed-button {
+      width: 220px; /* Adjust as needed for longest label */
+      white-space: nowrap;
+      margin-right: 1rem;
+    }
+
+    .pathDisplay {
+      flex-grow: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      background: #f0f0f0;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
   </style>
 </head>
 <body>
@@ -68,27 +90,31 @@
 
   <audio id="audioPlayer" src="" preload="auto"></audio>
 
-  <label>Settings:</label>
-  <div style="margin-top: 10px;">
-    <button onclick="choosePiper()">Choose Piper Executable</button>
-    <span id="piperPathDisplay"></span>
-   </div>
+  <fieldset style="border-color: blue; margin-bottom: 10px;">
+    <legend>General Settings:</legend>
+    <div class="row">
+      <button class="fixed-button" onclick="choosePiper()">Choose Piper Executable</button>
+      <span id="piperPathDisplay" class="pathDisplay"></span>
+    </div>
 
-   <div>
-    <button onclick="selectModelDirectory()">Choose Model Folder</button>
-    <span id="modelDirDisplay"></span>
-  </div>
-  
-  <p></p>
-  <label for="modelSelect">Choose Voice Model:</label>
-  <select id="modelSelect">
-    <option disabled selected>Loading models...</option>
-  </select>
-  <button id="previewBtn" disabled>Preview Voice</button>
-  <p></p>
+    <div class="row">
+      <button class="fixed-button" onclick="selectModelDirectory()">Choose Model Folder</button>
+      <span id="modelDirDisplay" class="pathDisplay"></span>
+    </div>
+  </fieldset>
 
-  <label for="ttsText">Text to Speak:</label>
-  <textarea id="ttsText" rows="20" placeholder="Enter text here..."></textarea>
+  <fieldset style="border-color: blue; margin-bottom: 10px;">
+    <legend>Voice Settings:</legend>
+    <label for="modelSelect">Choose Voice Model:</label>
+    <select id="modelSelect">
+      <option disabled selected>Loading models...</option>
+    </select>
+    <button id="previewBtn" disabled>Preview Voice</button>
+  </fieldset>
+
+  <p><button id="loadTextFileBtn">Load Text File...</button></p>
+  <label for="textInput">Text to Speak:</label>
+  <textarea id="textInput" style="height: 300px; overflow: auto;" placeholder="Enter text here..."></textarea>
 
   <label for="outputPath">Output File (optional):</label>
   <div class="inline-group">
@@ -106,6 +132,7 @@
       <div id="progressBar" style="width: 0%; height: 12px; background: #4caf50; border-radius: 4px;"></div>
     </div>
     <p id="progressText" style="margin: 4px 0 0; font-size: 0.9em;">0%</p>
+    <p id="durationEstimate">Estimated Duration: —</p>
   </div>
 
   <div id="audioControls" style="display: none; margin-top: 10px;">
@@ -130,7 +157,7 @@
     const settings = await window.piperAPI.getLastSettings();
 
     if (settings.lastText) {
-      document.getElementById('ttsText').value = settings.lastText;
+      document.getElementById('textInput').value = settings.lastText;
     }
 
     if (settings.lastOutput) {
@@ -193,7 +220,7 @@
   }
 
   async function speakText() {
-    const text = document.getElementById('ttsText').value;
+    const text = document.getElementById('textInput').value;
     const modelPath = document.getElementById('modelSelect').value;
     const status = document.getElementById('status');
     const speakBtn = document.getElementById('speakButton');
@@ -206,6 +233,10 @@
     progressContainer.style.display = 'block';
     progressBar.style.width = '0%';
     progressText.textContent = '0%';
+
+    const words = text.trim().split(/\s+/).filter(Boolean).length;
+    const estimatedSeconds = Math.ceil((words / 160) * 60);
+    document.getElementById('durationEstimate').textContent = `Estimated Duration: ~${estimatedSeconds}s`;
 
     // Estimate duration based on text length
     const charsPerSecond = 15; // tweak this if needed
@@ -223,7 +254,7 @@
     try {      
       await window.piperAPI.speak(text, modelPath, outputFilePath);
       const audio = document.getElementById('audioPlayer');
-      audio.src = outputFilePath;
+      audio.src = `${outputFilePath}?t=${Date.now()}`
       audio.load();
       audio.play();
 
@@ -237,10 +268,12 @@
     
     speakBtn.disabled = false;
   }
-  
+    
   async function resetToDefaults() {
     const confirmed = confirm('Are you sure you want to reset all settings to defaults?');
     if (!confirmed) return;
+
+    document.getElementById('durationEstimate').textContent = 'Estimated Duration: —';
 
     await window.piperAPI.resetSettings();
     location.reload(); // reloads the app with default state
@@ -282,6 +315,11 @@
 
   const audio = document.getElementById('audioPlayer');
 
+  audio.onloadedmetadata = () => {
+    const duration = audio.duration.toFixed(1);
+    document.getElementById('durationEstimate').textContent = `Duration: ${duration} seconds`;
+  };
+
   audio.onplay = () => {
     document.getElementById('status').textContent = 'Playing...';
     document.getElementById('audioControls').style.display = 'block';
@@ -305,7 +343,17 @@
     progressText.textContent = `${percent.toFixed(0)}%`;
   };
 
-  window.addEventListener('DOMContentLoaded', () => {
+  function updateEstimatedDuration() {
+    const text = document.getElementById('textInput').value.trim();
+    const words = text.split(/\s+/).filter(w => w.length > 0).length;
+    const WPM = 160; // Average speaking rate
+    const seconds = Math.ceil((words / WPM) * 60);
+
+    document.getElementById('durationEstimate').textContent =
+      `Estimated Duration (WPM): ${seconds}s`;
+  }
+
+  window.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('previewBtn').addEventListener('click', async () => {
       const modelPath = document.getElementById('modelSelect').value;
       if (!modelPath) return;
@@ -322,9 +370,25 @@
       }
     });
 
-  });
+    document.getElementById('loadTextFileBtn').addEventListener('click', async () => {
+      const result = await window.piperAPI.readTextFile();
 
-  window.addEventListener('DOMContentLoaded', async () => {
+      if (!result) return;
+
+      if (result.tooLarge) {
+        if (confirm('File is large. Speak directly without preview?')) {
+          const modelPath = document.getElementById('voiceSelect').value;
+          const outputPath = 'large-output.wav'; // or generate name
+          await window.piperAPI.speakTextFile(result.path, modelPath, outputPath);
+          // new Audio(outputPath).play();
+          new Audio(`${outputPath}?t=${Date.now()}`).play();
+        }
+      } else {
+        document.getElementById('textInput').value = result.text;
+        updateEstimatedDuration();
+      }
+    });    
+
     // Load saved model directory (if any)
     const modelDir = await window.piperAPI.getModelDirectory();
     if (modelDir) {

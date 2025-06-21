@@ -29,7 +29,6 @@ if (!store.get('modelDirectory') || !fs.existsSync(store.get('modelDirectory')))
 }
 
 let currentProcess = null;
-let currentAudioFile = null;
 
 function createWindow() {
   const winBounds = store.get('windowBounds', { width: 500, height: 500 });
@@ -115,7 +114,6 @@ ipcMain.handle('run-piper', async (_event, text, modelPath, outFile) => {
     ], { stdio: ['pipe', 'inherit', 'inherit'] });
 
     currentProcess = proc;
-    currentAudioFile = outFile;
 
     proc.stdin.write(text);
     proc.stdin.end();
@@ -123,7 +121,6 @@ ipcMain.handle('run-piper', async (_event, text, modelPath, outFile) => {
     proc.on('close', (code) => {
       currentProcess = null;
       if (code === 0) {
-        currentAudioFile = outFile;
         resolve();
       } else {
         reject(new Error('Piper failed with code ' + code));
@@ -235,4 +232,37 @@ ipcMain.handle('get-model-directory', () => {
 
 ipcMain.handle('validate-model-path', (_event, modelPath) => {
   return fs.existsSync(modelPath);
+});
+
+ipcMain.handle('read-text-file', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: 'Select Text File',
+    filters: [{ name: 'Text Files', extensions: ['txt'] }],
+    properties: ['openFile']
+  });
+  if (canceled || !filePaths[0]) return null;
+
+  const filePath = filePaths[0];
+  const stats = fs.statSync(filePath);
+  if (stats.size > 1024 * 1024) return { tooLarge: true, path: filePath }; // >1MB
+
+  const text = fs.readFileSync(filePath, 'utf-8');
+  return { text, path: filePath };
+});
+
+ipcMain.handle('speak-text-file', async (_, filePath, modelPath, outputPath) => {
+  
+  return new Promise((resolve, reject) => {
+    const child = spawn(piperPath, [
+      '--model', modelPath,
+      '--output_file', outputPath
+    ]);
+
+    fs.createReadStream(filePath).pipe(child.stdin);
+
+    child.on('exit', code => {
+      if (code === 0) resolve(outputPath);
+      else reject(new Error(`Piper exited with code ${code}`));
+    });
+  });
 });
