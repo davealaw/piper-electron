@@ -48,3 +48,9 @@ Icon?
 
 # Electron specific
 out/
+
+# Coverage reports (should not be in repo)
+coverage/
+
+# Internal documentation
+WARP.md
