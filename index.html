@@ -3,87 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>Piper TTS GUI</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      margin: 20px;
-    }
-    label, legend {
-      font-weight: bold;
-    }
-    input, textarea, select {
-      width: 100%;
-      margin: 10px 0;
-      padding: 6px;
-      font-size: 1em;
-    }   
-    button {
-      padding: 10px 20px;
-      font-size: 1em;
-      margin-top: 10px;
-    }
-    #status {
-      margin-top: 10px;
-      color: #444;
-    }
-    .inline-group {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-    }
-    .inline-group input[type="text"] {
-      flex-grow: 1;
-    }
-    #spinner {
-      display: none;
-      margin-top: 10px;
-    }
-
-    .spinner-dot {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      margin-right: 4px;
-      border-radius: 50%;
-      background-color: #444;
-      animation: blink 1s infinite alternate;
-    }
-
-    .spinner-dot:nth-child(2) { animation-delay: 0.2s; }
-    .spinner-dot:nth-child(3) { animation-delay: 0.4s; }
-
-    #progressContainer.fade-out {
-        opacity: 0.3;
-        transition: opacity 0.5s ease;
-    }
-
-    @keyframes blink {
-      0% { opacity: 0.2; }
-      100% { opacity: 1; }
-    }
-
-    .row {
-      display: flex;
-      align-items: center;
-      margin-bottom: 0.5rem;
-    }
-
-    .fixed-button {
-      width: 220px; /* Adjust as needed for longest label */
-      white-space: nowrap;
-      margin-right: 1rem;
-    }
-
-    .pathDisplay {
-      flex-grow: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      background: #f0f0f0;
-      padding: 4px 8px;
-      border-radius: 4px;
-    }
-  </style>
+  <link rel="stylesheet" href="styles/main.css">
 </head>
 <body>
   <h2>Piper TTS</h2>
@@ -93,12 +13,12 @@
   <fieldset style="border-color: blue; margin-bottom: 10px;">
     <legend>General Settings:</legend>
     <div class="row">
-      <button class="fixed-button" onclick="choosePiper()">Choose Piper Executable</button>
+      <button id="choosePiperButton" class="fixed-button">Choose Piper Executable</button>
       <span id="piperPathDisplay" class="pathDisplay"></span>
     </div>
 
     <div class="row">
-      <button class="fixed-button" onclick="selectModelDirectory()">Choose Model Folder</button>
+      <button id="selectModelDirectoryButton" class="fixed-button">Choose Model Folder</button>
       <span id="modelDirDisplay" class="pathDisplay"></span>
     </div>
   </fieldset>
@@ -122,7 +42,7 @@
     </div>
 
     <!-- Right-aligned button -->
-    <button onclick="resetToDefaults()" style="background-color: #f44; color: white;">Reset to Defaults</button>
+    <button id="resetToDefaultsButton" style="background-color: #f44; color: white;">Reset to Defaults</button>
   </div>
 
   <div id="textDropZone" style="border: 2px dashed #aaa; padding: 10px; margin-bottom: 10px;">
@@ -135,16 +55,16 @@
   <label for="outputPath">Output File (optional):</label>
   <div class="inline-group">
     <input id="outputPath" type="text" readonly placeholder="out.wav (default)" />
-    <button onclick="chooseOutput()">Browse...</button>
+    <button id="chooseOutputButton">Browse...</button>
   </div>
 
   <div style="display: flex; justify-content: space-between; margin: 10px 0;">
-  <button id="speakButton" onclick="speakText()">Speak</button>
+  <button id="speakButton">Speak</button>
   <div id="audioControls" style="display: none; margin-top: 10px;">
-    <button onclick="playAudio()">▶️ Play</button>
-    <button onclick="pauseAudio()">⏸️ Pause</button>
-    <button onclick="resumeAudio()">🔄 Resume</button>
-    <button onclick="stopAudio()">⏹️ Stop</button>
+    <button id="playAudioButton">▶️ Play</button>
+    <button id="pauseAudioButton">⏸️ Pause</button>
+    <button id="resumeAudioButton">🔄 Resume</button>
+    <button id="stopAudioButton">⏹️ Stop</button>
   </div>
   </div>
   <p id="status"></p>
@@ -157,339 +77,13 @@
     <p id="durationEstimate">Estimated Duration: —</p>
   </div>
 
-<script>
-  let outputFilePath = null;
-
-  async function selectModelDirectory() {
-    const folder = await window.piperAPI.chooseModelDirectory();
-    if (folder) {
-      document.getElementById('modelDirectory').textContent = folder;
-      await populateVoices(); // re-load voice list
-    }
-  }
-
-  async function loadSettings() {
-    const settings = await window.piperAPI.getLastSettings();
-
-    if (settings.lastText) {
-      document.getElementById('textInput').value = settings.lastText;
-    }
-
-    if (settings.lastOutput) {
-      document.getElementById('outputPath').value = settings.lastOutput;
-    }
-
-    document.getElementById('status').textContent = '';
-  }
-
-  async function populateVoices() {
-    const voices = await window.piperAPI.getVoiceModels();
-    const select = document.getElementById('modelSelect');
-    select.innerHTML = '';
-
-    if (!voices.length) {
-      const opt = document.createElement('option');
-      opt.text = 'No models found';
-      opt.disabled = true;
-      select.appendChild(opt);
-      return;
-    }
-
-    voices.forEach(model => {
-      const opt = document.createElement('option');
-      opt.value = model;
-      opt.text = model.split('/').pop(); // or format however you like
-      select.appendChild(opt);
-    });
-
-    // Select previously saved model if still valid
-    const last = await window.piperAPI.getLastSettings();
-    if (last?.lastModel && voices.includes(last.lastModel)) {
-      select.value = last.lastModel;
-    }
-  }
-
-  async function chooseOutput() {
-    const selected = await window.piperAPI.chooseOutputFile();
-    if (selected) {
-      outputFilePath = selected;
-      document.getElementById('outputPath').value = outputFilePath;
-    }
-  }
-
-  async function choosePiper() {
-    const selected = await window.piperAPI.choosePiperPath();
-    if (selected) {
-      document.getElementById('piperPathDisplay').textContent = selected;
-      updateSpeakButtonState();
-    }
-  }
-
-  async function updateSpeakButtonState() {
-    const speakButton = document.getElementById('speakButton');
-    const previewBtn = document.getElementById('previewBtn');
-    const modelSelect = document.getElementById('modelSelect');
-    const textArea = document.getElementById('textInput');
-
-    const isValidPiper = await window.piperAPI.validatePiperPath();
-    const modelPath = modelSelect.value;
-    const isModelValid = modelPath && await window.piperAPI.validateModelPath(modelPath);
-    const hasText = textArea && textArea.value.trim().length > 0;
-
-    previewBtn.disabled = !isModelValid;
-    speakButton.disabled = !(isValidPiper && isModelValid && hasText);
-  }
-
-  async function speakText() {
-    const text = document.getElementById('textInput').value;
-    const modelPath = document.getElementById('modelSelect').value;
-    const status = document.getElementById('status');
-    const speakBtn = document.getElementById('speakButton');
-    const progressContainer = document.getElementById('progressContainer');
-    const progressBar = document.getElementById('progressBar');
-    const progressText = document.getElementById('progressText');
-
-    speakBtn.disabled = true;
-    status.textContent = 'Processing...';
-    progressContainer.style.display = 'block';
-    progressBar.style.width = '0%';
-    progressText.textContent = '0%';
-
-    const words = text.trim().split(/\s+/).filter(Boolean).length;
-    const estimatedSeconds = Math.ceil((words / 160) * 60);
-    document.getElementById('durationEstimate').textContent = `Estimated Duration: ~${estimatedSeconds}s`;
-
-    // Estimate duration based on text length
-    const charsPerSecond = 15; // tweak this if needed
-    const estimatedDuration = (text.length / charsPerSecond) * 1000;
-    const startTime = Date.now();
-
-    // Progress animation loop
-    let progressTimer = setInterval(() => {
-      const elapsed = Date.now() - startTime;
-      let percent = Math.min(100, Math.floor((elapsed / estimatedDuration) * 100));
-      progressBar.style.width = percent + '%';
-      progressText.textContent = percent + '% (estimated)';
-    }, 100);
-
-    try {      
-      await window.piperAPI.speak(text, modelPath, outputFilePath);
-      const audio = document.getElementById('audioPlayer');
-      audio.src = `${outputFilePath}?t=${Date.now()}`
-      audio.load();
-      audio.play();
-
-      clearInterval(progressTimer);
-
-      status.textContent = 'Playing...';
-      document.getElementById('audioControls').style.display = 'block';
-    } catch (err) {
-      status.textContent = 'Error: ' + err;
-    }
-    
-    speakBtn.disabled = false;
-  }
-    
-  async function resetToDefaults() {
-    const confirmed = confirm('Are you sure you want to reset all settings to defaults?');
-    if (!confirmed) return;
-
-    document.getElementById('durationEstimate').textContent = 'Estimated Duration: —';
-
-    await window.piperAPI.resetSettings();
-    location.reload(); // reloads the app with default state
-  }
-
-  async function cancelSpeak() {
-    const canceled = await window.piperAPI.cancelSpeak();
-    if (canceled) {
-      const status = document.getElementById('status');
-      status.textContent = 'Cancelled.';
-      document.getElementById('speakButton').disabled = false;
-      document.getElementById('cancelButton').disabled = true;
-      document.getElementById('progressBar').style.width = '0%';
-      document.getElementById('progressPercent').textContent = '';
-      document.getElementById('progressContainer').style.display = 'none';
-    }
-  }
-
-  function playAudio() {
-    const audio = document.getElementById('audioPlayer');
-    audio.play();
-  }
-
-  function pauseAudio() {
-    const audio = document.getElementById('audioPlayer');
-    audio.pause();
-  }
-
-  function resumeAudio() {
-    const audio = document.getElementById('audioPlayer');
-    audio.play(); // resume is same as play in HTML5
-  }
-
-  function stopAudio() {
-    const audio = document.getElementById('audioPlayer');
-    audio.pause();
-    audio.currentTime = 0;
-  }
-
-  const audio = document.getElementById('audioPlayer');
-
-  audio.onloadedmetadata = () => {
-    const duration = audio.duration.toFixed(1);
-    document.getElementById('durationEstimate').textContent = `Duration: ${duration} seconds`;
-  };
-
-  audio.onplay = () => {
-    document.getElementById('status').textContent = 'Playing...';
-    document.getElementById('audioControls').style.display = 'block';
-  };
-
-  audio.onpause = () => {
-    document.getElementById('status').textContent = 'Paused';
-  };
-
-  audio.onended = () => {
-    document.getElementById('status').textContent = 'Done.';
-    document.getElementById('audioControls').style.display = 'none';
-    progressContainer.style.display = 'none';
-    speakBtn.disabled = false;
-  };
-
-  audio.ontimeupdate = () => {
-    const progress = document.getElementById('progressBar');
-    const percent = (audio.currentTime / audio.duration) * 100;
-    progress.style.width = `${percent.toFixed(0)}%`;
-    progressText.textContent = `${percent.toFixed(0)}%`;
-  };
-
-  function updateEstimatedDuration() {
-    const text = document.getElementById('textInput').value.trim();
-    const words = text.split(/\s+/).filter(w => w.length > 0).length;
-    const WPM = 160; // Average speaking rate
-    const seconds = Math.ceil((words / WPM) * 60);
-
-    document.getElementById('durationEstimate').textContent =
-      `Estimated Duration (WPM): ${seconds}s`;
-  }
-
-  window.addEventListener('DOMContentLoaded', async () => {
-    document.getElementById('previewBtn').addEventListener('click', async () => {
-      const modelPath = document.getElementById('modelSelect').value;
-      if (!modelPath) return;
-
-      try {
-        const audioPath = await window.piperAPI.previewVoice(modelPath);
-        
-        // Bust the cache by appending a timestamp
-        const audio = new Audio(`${audioPath}?t=${Date.now()}`);
-        audio.play();
-      } catch (err) {
-        console.error("Voice preview failed:", err);
-        alert("Voice preview failed. Check the console for details.");
-      }
-    });
-
-    document.getElementById('loadTextFileBtn').addEventListener('click', async () => {
-      const result = await window.piperAPI.readTextFile();
-
-      if (!result) return;
-
-      if (result.tooLarge) {
-        if (confirm('File is large. Speak directly without preview?')) {
-          const modelPath = document.getElementById('voiceSelect').value;
-          const outputPath = 'large-output.wav'; // or generate name
-          await window.piperAPI.speakTextFile(result.path, modelPath, outputPath);
-          new Audio(`${outputPath}?t=${Date.now()}`).play();
-        }
-      } else {
-        document.getElementById('textInput').value = result.text;
-        updateEstimatedDuration();
-        updateSpeakButtonState();
-      }
-    });    
-
-    document.getElementById('textInput').addEventListener('input', updateSpeakButtonState);
-
-    document.getElementById('clearTextBtn').addEventListener('click', () => {
-      document.getElementById('textInput').value = '';
-      updateSpeakButtonState();
-    });
-
-    // Load saved model directory (if any)
-    const modelDir = await window.piperAPI.getModelDirectory();
-    if (modelDir) {
-      document.getElementById('modelDirDisplay').textContent = modelDir;
-      await populateVoices();  // <== this is essential
-    } else {
-      document.getElementById('modelDirDisplay').textContent = 'No directory selected';
-    }
-
-    // Load last settings like text/model/output
-    const last = await window.piperAPI.getLastSettings();
-    if (last?.lastText) {
-      document.getElementById('textInput').value = last.lastText;
-    }
-
-    if (last?.lastModel) {
-      const voiceSelect = document.getElementById('modelSelect');
-      const option = Array.from(voiceSelect.options).find(opt => opt.value === last.lastModel);
-      if (option) {
-        voiceSelect.value = last.lastModel;
-      }
-    }
-
-    const dropZone = document.getElementById('textDropZone');
-    const textArea = document.getElementById('textInput');
-
-    dropZone.addEventListener('dragover', (event) => {
-      event.preventDefault();
-      dropZone.style.borderColor = 'blue';  // Optional visual feedback
-    });
-
-    dropZone.addEventListener('dragleave', () => {
-      dropZone.style.borderColor = '#aaa';
-    });
-
-    dropZone.addEventListener('drop', async (event) => {
-      event.preventDefault();
-      dropZone.style.borderColor = '#aaa';
-
-      const file = event.dataTransfer.files[0];
-      if (!file || !file.name.endsWith('.txt')) {
-        alert('Only .txt files are supported.');
-        return;
-      }
-
-      if (file.size > 1024 * 1024) { // >1MB
-        alert('File too large to load into the editor. Please use "Load Text File..." instead.');
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        textArea.value = reader.result;
-      };
-      reader.readAsText(file);
-      updateSpeakButtonState();
-    });
-  });
-
-  // Call on load
-  window.onload = async () => {
-
-    await loadSettings();
-
-    const path = await window.piperAPI.getPiperPath();
-    if (path) {
-      document.getElementById('piperPathDisplay').textContent = path;
-    }
-
-    updateSpeakButtonState();
-  };
-
-</script>
-
+  <!-- Load scripts in dependency order -->
+  <script src="scripts/utils.js"></script>
+  <script src="scripts/audio.js"></script>
+  <script src="scripts/dragdrop.js"></script>
+  <script src="scripts/tss.js"></script>
+  <script src="scripts/settings.js"></script>
+  <script src="scripts/states.js"></script>
+  <script src="scripts/dom.js"></script>
 </body>
 </html>

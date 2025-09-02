@@ -12,9 +12,10 @@ contextBridge.exposeInMainWorld('piperAPI', {
   chooseModelDirectory: () => ipcRenderer.invoke('choose-model-directory'),
   getModelDirectory: () => ipcRenderer.invoke('get-model-directory'),
   previewVoice: (modelPath) => ipcRenderer.invoke('preview-voice', modelPath),
-  validateModelPath: (modelPath) => ipcRenderer.invoke('validate-model-path', modelPath), 
+  validateModelPath: (modelPath) => ipcRenderer.invoke('validate-model-path', modelPath),
   readTextFile: () => ipcRenderer.invoke('read-text-file'),
   speakTextFile: (filePath, modelPath, outputPath) => ipcRenderer.invoke('speak-text-file', filePath, modelPath, outputPath),
+  validateFileForDragDrop: (file) => ipcRenderer.invoke('validate-file-for-drag-drop', file),
   cancelSpeak: () => ipcRenderer.invoke('cancel-speak')
 });
 

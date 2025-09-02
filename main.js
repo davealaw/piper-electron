@@ -3,32 +3,39 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 
-const Store = require('electron-store').default;
-const store = new Store({
-  defaults: {
-    lastModel: '',
-    lastText: '',
-    windowBounds: { width: 800, height: 600, x: undefined, y: undefined },
-    piperPath: ''
-  }
-});
+// Use dynamic import for electron-store to handle ES modules in CommonJS
+let store;
+let currentProcess = null;
 
 const defaultPiperPath = path.join(__dirname, 'piper');
 const defaultModelDir = path.join(__dirname, 'voices');
 
-if (!store.get('piperPath') || !fs.existsSync(store.get('piperPath'))) {
-  if (fs.existsSync(defaultPiperPath)) {
-    store.set('piperPath', defaultPiperPath);
+// Initialize electron-store dynamically
+async function initStore() {
+  const { default: Store } = await import('electron-store');
+  
+  store = new Store({
+    defaults: {
+      lastModel: '',
+      lastText: '',
+      windowBounds: { width: 800, height: 600, x: undefined, y: undefined },
+      piperPath: ''
+    }
+  });
+
+  // Set default paths if they don't exist or are invalid
+  if (!store.get('piperPath') || !fs.existsSync(store.get('piperPath'))) {
+    if (fs.existsSync(defaultPiperPath)) {
+      store.set('piperPath', defaultPiperPath);
+    }
+  }
+
+  if (!store.get('modelDirectory') || !fs.existsSync(store.get('modelDirectory'))) {
+    if (fs.existsSync(defaultModelDir)) {
+      store.set('modelDirectory', defaultModelDir);
+    }
   }
 }
-
-if (!store.get('modelDirectory') || !fs.existsSync(store.get('modelDirectory'))) {
-  if (fs.existsSync(defaultModelDir)) {
-    store.set('modelDirectory', defaultModelDir);
-  }
-}
-
-let currentProcess = null;
 
 function createWindow() {
   const winBounds = store.get('windowBounds', { width: 500, height: 500 });
@@ -36,7 +43,10 @@ function createWindow() {
     ...winBounds,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-    },
+      nodeIntegration: false,
+      contextIsolation: true,
+      webSecurity: true
+    }
   });
 
   win.loadFile('index.html');
@@ -47,7 +57,45 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(createWindow);
+const knownTextExtensions = [
+  '.txt', '.md', '.html', '.htm', '.js', '.ts', '.json',
+  '.css', '.csv', '.xml', '.ini', '.log', '.yml', '.yaml',
+  '.py', '.java', '.c', '.cpp', '.rb', '.go'
+];
+
+function isKnownTextExtension(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  return knownTextExtensions.includes(ext);
+}
+
+function isProbablyTextContent(filePath, maxBytes = 512) {
+  try {
+    const buffer = fs.readFileSync(filePath, { encoding: null, flag: 'r' });
+    const sample = buffer.slice(0, maxBytes);
+    for (let i = 0; i < sample.length; i++) {
+      const code = sample[i];
+      if (code === 9 || code === 10 || code === 13) {
+        continue;
+      } // tab, CR, LF
+      if (code < 32 || code > 126) {
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isValidTextFile(filePath) {
+  return isKnownTextExtension(filePath) || isProbablyTextContent(filePath);
+}
+
+// Initialize app with proper store setup
+app.whenReady().then(async () => {
+  await initStore();
+  createWindow();
+});
 
 ipcMain.handle('choose-piper-path', async () => {
   const result = await dialog.showOpenDialog({
@@ -130,13 +178,13 @@ ipcMain.handle('run-piper', async (_event, text, modelPath, outFile) => {
 });
 
 ipcMain.handle('preview-voice', async (_event, modelPath) => {
-  const previewText = "This is a sample of the selected voice.";
+  const previewText = 'This is a sample of the selected voice.';
   const outputFile = path.join(app.getPath('temp'), 'piper-voice-preview.wav');
 
   return new Promise((resolve, reject) => {
     const piperPath = store.get('piperPath');
     if (!piperPath || !fs.existsSync(piperPath)) {
-      return reject(new Error("Piper path is not configured correctly."));
+      return reject(new Error('Piper path is not configured correctly.'));
     }
 
     const piper = spawn(piperPath, [
@@ -193,13 +241,15 @@ ipcMain.handle('reset-settings', async () => {
 
   return {
     piperPath: store.get('piperPath'),
-    modelDirectory: store.get('modelDirectory'),
+    modelDirectory: store.get('modelDirectory')
   };
 });
 
 ipcMain.handle('get-voice-models', async () => {
   const modelDir = store.get('modelDirectory');
-  if (!modelDir || !fs.existsSync(modelDir)) return [];
+  if (!modelDir || !fs.existsSync(modelDir)) {
+    return [];
+  }
 
   const models = fs.readdirSync(modelDir)
     .filter(name => name.endsWith('.onnx'))
@@ -219,7 +269,9 @@ ipcMain.handle('choose-model-directory', async () => {
     properties: ['openDirectory']
   });
 
-  if (result.canceled || result.filePaths.length === 0) return null;
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
 
   const folder = result.filePaths[0];
   store.set('modelDirectory', folder);
@@ -237,22 +289,34 @@ ipcMain.handle('validate-model-path', (_event, modelPath) => {
 ipcMain.handle('read-text-file', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     title: 'Select Text File',
-    filters: [{ name: 'Text Files', extensions: ['txt'] }],
+    // filters: [{ name: 'Text Files', extensions: ['txt'] }],
+    filters: [{ name: 'All Files', extensions: ['*'] }],
     properties: ['openFile']
   });
-  if (canceled || !filePaths[0]) return null;
+  if (canceled || !filePaths[0]) {
+    return null;
+  }
 
   const filePath = filePaths[0];
+
+  if (!isValidTextFile(filePath)) {
+    return { invalid: true, path: filePath };
+  }
+
   const stats = fs.statSync(filePath);
-  if (stats.size > 1024 * 1024) return { tooLarge: true, path: filePath }; // >1MB
+  if (stats.size > 1024 * 1024) {
+    return { tooLarge: true, path: filePath };
+  } // >1MB
 
   const text = fs.readFileSync(filePath, 'utf-8');
   return { text, path: filePath };
 });
 
 ipcMain.handle('speak-text-file', async (_, filePath, modelPath, outputPath) => {
-  
+
   return new Promise((resolve, reject) => {
+    const piperPath = store.get('piperPath');
+
     const child = spawn(piperPath, [
       '--model', modelPath,
       '--output_file', outputPath
@@ -261,8 +325,21 @@ ipcMain.handle('speak-text-file', async (_, filePath, modelPath, outputPath) => 
     fs.createReadStream(filePath).pipe(child.stdin);
 
     child.on('exit', code => {
-      if (code === 0) resolve(outputPath);
-      else reject(new Error(`Piper exited with code ${code}`));
+      if (code === 0) {
+        resolve(outputPath);
+      } else {
+        reject(new Error(`Piper exited with code ${code}`));
+      }
     });
   });
+});
+
+ipcMain.handle('validate-file-for-drag-drop', async (_, file) => {
+  // Use the same validation logic as read-text-file
+  if (!isValidTextFile(file)) {
+    return { valid: false, reason: 'Invalid file type' };
+  }
+
+  // You could also check size here if needed
+  return { valid: true };
 });
