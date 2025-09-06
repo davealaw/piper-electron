@@ -2,7 +2,7 @@
 
 A user-friendly Electron-based graphical interface for [Piper](https://github.com/rhasspy/piper), a fast, local neural text-to-speech system. This application provides an intuitive way to convert text to speech using high-quality neural voices without requiring an internet connection.
 
-![Piper TTS GUI Screenshot](https://via.placeholder.com/800x600?text=Piper+TTS+GUI)
+![Piper TTS GUI Screenshot](assets/screenshot.png)
 
 ## Features
 
